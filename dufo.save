@@ -1,0 +1,57 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+outdir="./enum-quick-$(date +%Y%m%d-%H%M%S)"
+mkdir -p "$outdir"
+
+echo "[*] Basic identity and kernel info" | tee "$outdir/summary.txt"
+{ id; uname -a; cat /etc/os-release 2>/dev/null || echo "no /etc/os-release"; } | tee "$outdir/identity.txt"
+
+echo; echo "[*] Users / groups / login history" | tee -a "$outdir/summary.txt"
+{ whoami; getent passwd | tail -n 50; last -n 10 2>/dev/null || true; } > "$outdir/users.txt"
+
+echo; echo "[*] Sudo rules" | tee -a "$outdir/summary.txt"
+sudo -l 2>/dev/null || echo "sudo not allowed or no passwordless rules" | tee "$outdir/sudo.txt"
+
+echo; echo "[*] SUID/SGID binaries (limited scan)" | tee -a "$outdir/summary.txt"
+find /bin /usr/bin /sbin /usr/sbin -perm /6000 -type f -exec ls -ld {} \; 2>/dev/null | tee "$outdir/suid_sgid.txt"
+
+echo; echo "[*] Capabilities (limited)" | tee -a "$outdir/summary.txt"
+getcap /bin /usr/bin /sbin /usr/sbin 2>/dev/null | tee "$outdir/capabilities.txt" || echo "getcap not available" > "$outdir/capabilities.txt"
+
+echo; echo "[*] Writable dirs in /home, /etc, /usr/local (limited depth)" | tee -a "$outdir/summary.txt"
+find /home /etc /usr/local -xdev -writable -type d -maxdepth 3 2>/dev/null | tee "$outdir/writable_dirs.txt"
+
+echo; echo "[*] World-writable files owned by root (limited scan)" | tee -a "$outdir/summary.txt"
+find /bin /usr/bin /sbin /usr/sbin -type f -perm -002 -uid 0 2>/dev/null | tee "$outdir/world_writable_root.txt"
+
+echo; echo "[*] Sensitive files in home directories" | tee -a "$outdir/summary.txt"
+find /home -type f \( -name ".bash_history" -o -name ".ssh" -o -name ".netrc" \) 2>/dev/null | tee "$outdir/sensitive_files.txt"
+
+echo; echo "[*] Cron and systemd jobs" | tee -a "$outdir/summary.txt"
+crontab -l 2>/dev/null | tee "$outdir/my_cron.txt"
+ls -la /etc/cron.* 2>/dev/null | tee "$outdir/cron_dirs.txt"
+systemctl list-timers --all 2>/dev/null | tee "$outdir/systemd_timers.txt" || true
+systemctl list-units --type=service --state=running 2>/dev/null | tee "$outdir/services_running.txt" || true
+
+echo; echo "[*] Network / listening services" | tee -a "$outdir/summary.txt"
+ss -ltnp 2>/dev/null | tee "$outdir/listeners.txt"
+
+echo; echo "[*] PATH + suspicious writable binaries in PATH" | tee -a "$outdir/summary.txt"
+echo "$PATH" | tr ':' '\n' > "$outdir/path.txt"
+for d in $(echo "$PATH" | tr ':' '\n'); do
+  find "$d" -maxdepth 1 -type f -writable -perm -o+w 2>/dev/null || true
+done | tee "$outdir/writable_bins_in_path.txt"
+
+echo; echo "[*] Summary of potential issues:" | tee -a "$outdir/summary.txt"
+grep -i "writable" "$outdir/"* | tee -a "$outdir/summary.txt"
+
+kernel_version=$(uname -r)
+echo "Kernel version: $kernel_version" | tee -a "$outdir/summary.txt"
+echo "Check for known exploits at: https://www.linuxkernelcves.com/cves?kernel=$kernel_version" >> "$outdir/summary.txt"
+
+echo "[*] NOTE: review the files in $outdir. Use GTFOBins/cheatsheets to research binaries found." | tee -a "$outdir/summary.txt"
+
+echo "[+] Done. Output saved to $outdir"
+
+
