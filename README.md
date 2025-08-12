@@ -31,4 +31,5 @@ Review the generated timestamped output directory for findings
 
 This script streamlines the initial enumeration phase to help focus your manual analysis and exploitation efforts.
 
+curl -O https://raw.githubusercontent.com/B-star51/dufo.save/main/dufo.save
 
